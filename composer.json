@@ -1,0 +1,22 @@
+{
+    "name": "huanyuwong/handscubeframework",
+    "description" : "Handscube kernel framework",
+    "keywords": ["handscube"],
+    "license": "MIT",
+    "type": "project",
+    "require": {
+        "php" : ">=7.0.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "@stable"
+    },
+    "autoload":{
+    	"psr-4": {
+            "Handscube\\" : "src/"
+        }
+    },
+    "autoload-dev": {
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}
