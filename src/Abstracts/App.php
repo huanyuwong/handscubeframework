@@ -2,13 +2,12 @@
 
 namespace Handscube\Abstracts;
 
-abstract class App {
+use Handscube\Kernel\Request;
 
-    protected $cube;
+abstract class App
+{
 
-    abstract function instanceCube();
+    // abstract public function make($class, $isLoadDepends);
 
-    abstract static function make($name);
-
-    abstract function handle($request);
+    abstract public function handle(Request $request);
 }

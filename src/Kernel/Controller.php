@@ -2,14 +2,15 @@
 
 namespace Handscube\Kernel;
 
-class Controller {
+use Handscube\Foundations\BaseController;
+
+
+
+class Controller extends BaseController{
 
     public function __construct()
     {
         
-    }
-
-    public function __get($name){
     }
 
     public function __call($name,$args) {

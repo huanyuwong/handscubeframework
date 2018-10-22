@@ -4,7 +4,8 @@
     "keywords": ["handscube"],
     "license": "MIT",
     "require": {
-        "php" : ">=7.0.0"
+        "php" : ">=7.0.0",
+        "illuminate/database": "^5.5"
     },
     "require-dev": {
         "phpunit/phpunit": "@stable"
@@ -17,5 +18,11 @@
     "autoload-dev": {
     },
     "minimum-stability": "dev",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "repositories": {
+        "packagist": {
+            "type": "composer",
+            "url": "https://packagist.phpcomposer.com"
+        }
+    }
 }
