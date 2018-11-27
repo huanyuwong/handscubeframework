@@ -7,10 +7,10 @@ use Handscube\Kernel\Exceptions\NotFoundException;
 use Handscube\Kernel\Request;
 
 /**
- * Resolve Trait
- * This is part of Handscube framework.
+ * Resolve Trait [c] Handscube.
+ * This trait must be depend on Application
  *
- * @Author J.W.
+ * @author J.W.
  */
 
 trait ResolveTrait
@@ -49,6 +49,7 @@ trait ResolveTrait
     }
 
     /**
+     * Resolave object
      * Returns an object that contains a dependency
      * @param [Object] $class
      * @param [Bool] $shouldDepend
@@ -73,13 +74,12 @@ trait ResolveTrait
     }
 
     /**
-     *
-     * @param [type] $className []
+     * Call the method in IoC way.
+     * @param [mixed] $className [String or an object]
      * @param [type] $methodName []
      * @param [Array] $exParams  []
      * @return [type] $mixed [method return]
      *
-     * Call the method in IoC way.
      */
     public function resolveMethod($class = __CLASS__, $method, $exParams = [])
     {
@@ -87,11 +87,13 @@ trait ResolveTrait
             $instance = $this->resolve($class);
         } else if (is_object($class)) {
             $instance = $class;
+            $class = get_class($class);
         } else {
             throw new InsideException("Parameter \$class can only be a string or a object.");
         }
-
         $paramArr = $this->resolveMethodDepends($class, $method);
+        // $instance->{$method}();
+        // exit();
         return $instance->{$method}(...array_merge($paramArr, $exParams));
     }
 
@@ -102,13 +104,11 @@ trait ResolveTrait
      *
      * Get depends of a object or a method.
      */
-    public function resolveDepends($class, $method = '__construct')
+    public function resolveDepends(string $class, $method = '__construct')
     {
-
         if (!class_exists($class)) {
             throw new NotFoundException("Class $class is not found.");
         }
-
         $refClass = new \ReflectionClass($class);
         $depends = [];
         if (!$refClass->hasMethod($method) && $method === "__construct") { //The situation where the constructor does not exist.
@@ -121,24 +121,27 @@ trait ResolveTrait
                 foreach ($dependsParams as $param) {
                     if ($class = $param->getClass()) {
                         $className = $class->getName();
-                        // if(array_key_exists($className,$this->$excludeIoc)) continue; //Exclude the classes contained in $this->$excludeIoc.
                         $prevDepend = $this->resolveDepends($className);
                         //handle the depend object which do not have __construct function or a singleton instance.
                         if (is_object($prevDepend)) {
                             $depends[] = $prevDepend;
                             continue;
-                        };
+                        }
                         if ($this->isSingleton($className)) {
                             $depends[] = $this->getSingleton($className);
                         } else {
-                            $depends[] = (new \ReflectionClass($className))->newInstanceArgs($prevDepend);
+                            //$className::type === "Model" && $this->isControllerCall
+                            if ($className::type === "Model" && $this->isControllerCall) {
+                                $model = $this->getActionBoundModel($className);
+                                $depends[] = $model;
+                            } else {
+                                $depends[] = (new \ReflectionClass($className))->newInstanceArgs($prevDepend);
+                            }
                         }
-
                     }
                 }
             }
-
-        };
+        }
         return $depends; //return finally depends.
     }
 
@@ -151,6 +154,18 @@ trait ResolveTrait
      */
     public function resolveMethodDepends($className = __CLASS__, $method)
     {
+        // ff($this->resolveDepends($className, $method));
         return $this->resolveDepends($className, $method);
+    }
+
+    /**
+     * Check class is model or not.
+     *
+     * @param string $modelName
+     * @return boolean
+     */
+    public function isModel(string $modelName)
+    {
+        return $modelName::type === "Model" ? true : false;
     }
 }

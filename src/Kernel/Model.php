@@ -2,7 +2,9 @@
 
 namespace Handscube\Kernel;
 
-class Model extends Illuminate\Database\Eloquent\Model
+use Handscube\Foundations\BaseModel;
+
+class Model extends BaseModel
 {
 
 }

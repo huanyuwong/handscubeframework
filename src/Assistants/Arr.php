@@ -53,4 +53,36 @@ class Arr
         }
         return false;
     }
+
+    /**
+     * Drop string index.
+     *[ "foo" => "bar"]  --> [ 0 => "bar"]
+     * @param array $arr
+     * @return void
+     */
+    public static function dropStringKey(array $arr)
+    {
+        $newArr = [];
+        foreach ($arr as $item) {
+            $newArr[] = $item;
+        }
+        return $newArr;
+    }
+
+    /**
+     * Sort with arr key.
+     * e.g. ["b","a","c"] + ["a"=>"apple","c"=>"cache","b"=>"boring"] => ["b"=>"boring", "a"=>"apple", "c"=>"cache"];
+     *
+     * @param array $sortKeys
+     * @param array $sortArr
+     * @return void
+     */
+    public static function sortWithKeyArray(array $sortKeys, array $sortArr)
+    {
+        $newSortArr = [];
+        foreach ($sortKeys as $key) {
+            $newSortArr[$key] = isset($sortArr[$key]) ? $sortArr[$key] : null;
+        }
+        return $newSortArr;
+    }
 }

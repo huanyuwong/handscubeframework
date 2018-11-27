@@ -4,19 +4,24 @@ namespace Handscube\Kernel;
 
 use Handscube\Abstracts\App;
 use Handscube\Abstracts\Features\GSAble;
-use Handscube\Assistants\Composer;
 use Handscube\Handscube;
+use Handscube\Kernel\Db;
 use Handscube\Kernel\Exceptions\AuthException;
 use Handscube\Kernel\Exceptions\InsideException;
+use Handscube\Kernel\Exceptions\InvalidException;
+use Handscube\Kernel\Exceptions\IOException;
 use Handscube\Kernel\Exceptions\NotFoundException;
 use Handscube\Kernel\Guard;
 use Handscube\Kernel\Guards\AppGuard;
 use Handscube\Kernel\Request;
+use Handscube\Kernel\Response;
+
+require_once __DIR__ . "//../functions.php";
 
 /**
  * This is part of Handscube framework.
  *
- * ClassApplication of Handscube framework.
+ * Class Application of Handscube framework.
  * @author J.W.
  */
 class Application extends App implements GSAble
@@ -25,6 +30,9 @@ class Application extends App implements GSAble
     use \Handscube\Traits\ResolveTrait;
     use \Handscube\Traits\HunterTrait;
 
+    /**
+     * App path varibles.
+     */
     private $path;
     private $ctrlPath;
     private $routePath;
@@ -40,48 +48,184 @@ class Application extends App implements GSAble
     public $module;
     public $controller;
     public $action;
-    protected $guard;
+
+    public $isControllerCall = false;
+
+    protected $guard = AppGuard::class;
+
+    private $accessKey;
+    private $appKey;
+    public $injectsArr;
 
     const __CTRL_NAMESPACE__ = "App\\Controllers\\";
 
+    /**
+     * Constructor.
+     *
+     * @param [type] $path
+     */
     public function __construct($path)
     {
-
-        echo "Application __construct\n";
-        $this->path = realpath($path);
-        $this->ctrlPath = realpath($this->path . "/./controllers/");
-        $this->routePath = realpath($this->path . "/../routes/");
-        $this->configPath = realpath($this->path . "/../configs/");
-        $this->appConfig = Composer::use ($this->configPath . "/App.php");
-        $this->databaseConfig = Composer::use ($this->configPath . "/Database.php");
-        $this->boot();
-        $this->init();
-
+        $this->checkOrigin();
+        $this->boot($path);
+        $this->init($path);
     }
 
     /**
      * Application boot method.
-     * Do things such as reading configuration.
+     * Do things such as reading configuration,Register Components.
      */
-    protected function boot()
+    protected function boot($path)
     {
-        $components = $this->appConfig["components"]["register"];
-        if (!$this->registerComponents($components)) { //register components.
+        $this->ConfigurePath($path);
+        if (!$this->registerComponents($this->appConfig["components"]["register"])) {
             throw new InsideException("Components register fail");
         }
     }
 
     /**
-     * init function
-     *
+     * init function.
+     * Did some work on registering App Guard and boot ORM.
      * @return void
      */
     protected function init()
     {
+        $this->generateKey();
+        $this->registerSessionDriver();
         $this->registerGuard();
-        $db = new Db();
-        $db->addConnection($this->databaseConfig["mysql"]);
-        $db->bootEloquent();
+        $this->registerORM();
+    }
+
+    // protected function startSession()
+    // {
+    //     Session::start();
+    // }
+
+    protected function registerSessionDriver()
+    {
+        $driverName = environment()['SESSION_DRIVER'] ?: $this->appConcig['session_driver'];
+        $driver = 'Handscube\Kernel\Drivers\Session\\' . ucfirst(strtolower($driverName)) . 'Driver'::class;
+        $sessionDriver = new $driver;
+        session_set_save_handler($sessionDriver);
+        Session::start();
+    }
+
+    /**
+     * Generate app_key and access_key
+     *
+     * @return void
+     */
+    public function generateKey()
+    {
+        $this->createAccessKeyIfNotExists();
+        $this->createAppKeyIfNotExists();
+    }
+
+    /**
+     * Create access key.
+     *
+     * @return void
+     */
+    public function createAccessKeyIfNotExists()
+    {
+        if (!$this->isAccessKeyExists()) {
+            $token = CrossGate::signToken();
+            if (!setEnv("ACCESS_KEY", $token)) {
+                throw new IOException("Set ACCESS_KEY to .env file faild");
+            }
+        } else {
+            return;
+        }
+    }
+
+    /**
+     * Create app key
+     *
+     * @return void
+     */
+    public function createAppKeyIfNotExists()
+    {
+        if (!$this->isAppKeyExists()) {
+            $key = \Handscube\Assistants\Encrypt::signAppKey();
+            if (!setEnv("APP_KEY", $key)) {
+                throw new IOException("Set APP_KEY to .env file faild");
+            }
+        } else {
+            return;
+        }
+    }
+
+    /**
+     * Check app key whether exists or not.
+     *
+     * @return boolean
+     */
+    public function isAppKeyExists()
+    {
+        return getKeyFromEnv("APP_KEY") ? true : false;
+    }
+
+    /**
+     * Check access key whether exists or not.
+     *
+     * @return boolean
+     */
+    public function isAccessKeyExists()
+    {
+        return getKeyFromEnv("ACCESS_KEY") ? true : false;
+    }
+
+    /**
+     * Get access key.
+     *
+     * @return void
+     */
+    public function getAccessKey()
+    {
+        if ($this->accessKey) {
+            return $this->accessKey;
+        }
+        $this->accessKey = getKeyFromEnv('ACCESS_KEY');
+        return $this->accessKey;
+    }
+
+    /**
+     * Get app key.
+     *
+     * @return void
+     */
+    public function getAppKey()
+    {
+        return $this->appKey = $this->appKey ?: getKeyFromEnv("APP_KEY");
+    }
+
+    /**
+     * Check the orgin.
+     *
+     * @return void
+     */
+    public function checkOrigin()
+    {
+        $appConfig = config('app');
+        $domainConfig = $appConfig["domain_config"];
+        \Handscube\Kernel\CrossGate::openCross($domainConfig);
+    }
+
+    /**
+     * Initialize the path configuration
+     *
+     * @return void
+     */
+    public function ConfigurePath($path)
+    {
+        $this->path = realpath($path);
+        $this->ctrlPath = realpath($this->path . "/./controllers/");
+        $this->routePath = realpath($this->path . "/../routes/");
+        $this->configPath = realpath($this->path . "/../configs/");
+        $this->appConfig = require $this->configPath . "/App.php";
+        // $this->appConfig = Composer::use ($this->configPath . "/App.php", false);
+        // $this->databaseConfig = Composer::use ($this->configPath . "/Database.php", false);
+        $this->databaseConfig = require $this->configPath . "/Database.php";
     }
 
     /**
@@ -95,14 +239,14 @@ class Application extends App implements GSAble
     }
 
     /**
-     * Bind guard
+     * Bind app guard.
      *
      * @param string $guardName
      * @return void
      */
     public function bindGuard($guardName = '')
     {
-        return $guardName ?: AppGuard::class;
+        return $this->guard = $guardName ?: AppGuard::class;
     }
 
     /**
@@ -130,11 +274,23 @@ class Application extends App implements GSAble
     public function checkGuardStations(array $stations, Request $request)
     {
         foreach ($stations as $index => $station) {
-            if (($this->make($station, false))->runHandle($request) === false) {
+            if (($this->make($station, false))->handle($request) === false) {
                 throw new AuthException("App guard {$station} verification failed.");
             }
         }
         return true;
+    }
+
+    /**
+     * Register ORM.
+     *
+     * @return void
+     */
+    public function registerORM()
+    {
+        $db = new Db();
+        $db->addConnection($this->databaseConfig["mysql"]);
+        $db->bootEloquent();
     }
 
     /**
@@ -145,7 +301,6 @@ class Application extends App implements GSAble
      */
     public function registerComponents($components, $index = "", $shouldLoadDepends = true)
     {
-
         if (is_array($components) && !empty($components)) {
 
             foreach ($components as $key => $component) {
@@ -186,29 +341,15 @@ class Application extends App implements GSAble
      */
     public function handle(Request $request)
     {
-
         if ($this->guard) {
             $this->handleToGuard($this->guard, $request);
         }
-        // ff($request);
-        $this->router->handle($this->request);
+        return $this->router->handle($this->request);
     }
 
     public function guard()
     {
-        return AppGuard::class;
-    }
-
-    public function test()
-    {
-        // Cookie::find();
-        // print_r(Handscube::$app);
-        // $com = new Com();
-        // $com->index();
-        // $router = new Route();
-        // $testControlle = new BaseController();
-        // $testControlle->printRequest();
-
+        return $this->guard;
     }
 
     /**
@@ -434,6 +575,54 @@ class Application extends App implements GSAble
         return $this->componentsNameMap;
     }
 
+    /**
+     * Get action bound model.
+     *
+     * @param [type] $className
+     * @return void
+     */
+    public function getActionBoundModel($className)
+    {
+        // ff(Route::$modelsInstance);
+        if (Route::$modelsInstance && Route::$modelsAreSort) {
+            if ($model = array_shift(Route::$modelsInstance)) {
+                array_shift($this->router->paramsWithoutKey);
+                return $model;
+            } else {
+                $id = array_shift($this->router->paramsWithoutKey);
+                $model = $this->make($className, false)->find($id);
+                if ($model) {
+                    return $model;
+                }
+                throw new InvalidException("Model id $id is invalid");
+            }
+        }
+        $id = array_shift($this->router->paramsWithoutKey);
+        $model = $this->make($className, false)->find($id);
+        if ($model) {
+            return $model;
+        }
+        throw new InvalidException("Model id $id is invalid");
+    }
+
+    public function send($response)
+    {
+        if ($response instanceof Response) {
+            $response->send();
+        } else if (is_string($response)) {
+            echo $response;
+        } else if (is_array($response) || is_object($response)) {
+            print_r($response);
+        } else {
+            return;
+        }
+    }
+
+    public function response()
+    {
+        return new Response();
+    }
+
     public function otherwise()
     {
 
@@ -489,14 +678,19 @@ class Application extends App implements GSAble
         return $this->routePath;
     }
 
-    public function isClassExist()
+    /**
+     * Check the file is exists or not.
+     *
+     * @param [type] $className
+     * @return boolean
+     */
+    public function isClassExist($className)
     {
-
+        return class_exists($className);
     }
 
     public function __destruct()
     {
         unset($this->componentsMap);
-        echo "Application __desctruct\n";
     }
 }

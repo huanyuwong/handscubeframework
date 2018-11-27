@@ -3,20 +3,19 @@
 /**
  *  This Class is part of Handscube framework.
  *
- *     Class Handscube #Handscube
- *  @Author HuanYu.Wong
- * "workbench.editor.enablePreview": false,
+ *  Class Handscube #Handscube
+ *  @author J.W.
+ *  "workbench.editor.enablePreview": false,
  */
 
 use Handscube\Assistants\Arr;
 use Handscube\Handscube;
+use Handscube\Kernel\Route;
 
 define("ROOT_PATH", __DIR__ . "/");
 
 define("APP_PATH", Handscube::$appPath);
 define("APP_CONFIG_PATH", Handscube::$configPath);
-
-$commonConfig = [];
 
 /**
  *
@@ -24,12 +23,13 @@ $commonConfig = [];
  */
 
 // $commonConfig = Handscube::import(APP_CONFIG_PATH . "Common.php");
-$commonConfig = [];
+
 runWithEnvironment();
 
-/***
+/**
+ * Return enviriment config
  *
- * Global Functions
+ * @return void
  */
 function environment()
 {
@@ -40,6 +40,33 @@ function environment()
     return $envConfig;
 }
 
+function setEnv(string $key, string $value)
+{
+    $envFile = realpath(APP_PATH . "../.env");
+    $data = "\n" . $key . '=' . $value;
+    if (file_put_contents($envFile, $data, FILE_APPEND)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Get env key
+ *
+ * @param [type] $key
+ * @return void
+ */
+function getKeyFromEnv(string $key)
+{
+    $env = environment();
+    return isset($env[$key]) ? $env[$key] : null;
+}
+
+/**
+ * Check the app envrioment.
+ *
+ * @return void
+ */
 function runWithEnvironment()
 {
     if (strtolower(environment()['APP_ENV']) === "production"
@@ -55,49 +82,79 @@ function runWithEnvironment()
     }
 }
 
-function initGlobal()
-{
-
-}
+// function boot()
+// {
+//     global $appConfig, $databaseConfig;
+//     // $appConfig = Composer::use (APP_CONFIG_PATH . "/" . "App.php", false);
+//     // $databaseConfig = Composer::use (APP_CONFIG_PATH . "/Database.php", false);
+// }
 
 function ff($param, $havePre = "")
 {
     if (!$havePre) {
-        print_r($param);
-        f();
+        f($param);
+        exit();
     } else {
         echo "<pre>";
-        print_r($param);
-        f();
+        f($param);
+        exit();
     }
 
 }
 
-function f()
+function f($param)
 {
+    print_r($param);
     echo "\n";
-    echo exit();
+}
+
+/**
+ * get route through route name.
+ *
+ * @param [type] $routeName
+ * @param [type] $routeParams
+ * @return [string route(url)]
+ */
+function route($routeName, array $routeParams)
+{
+    $route = \Handscube\Foundations\Routing::getRouteByName($routeName);
+    if ($routeParams) {
+        foreach ($routeParams as $index => $single) {
+            if (strpos($route, $index)) {
+                $replacedOne = trim("{" . $index . "}");
+                $replacedTwo = trim(":" . $index);
+                $route = str_replace([$replacedOne, $replacedTwo], $single, $route);
+            }
+        }
+    }
+    $protocol = $_SERVER['REQUEST_SCHEME'] ?: "http";
+    return $protocol . "://" . $_SERVER['HTTP_HOST'] . $route;
 }
 /**
  * read config file.
+ * $key app.session_expire
  */
 
-function config(string $key)
+function config($key = 'app')
 {
-    global $commonConfig;
-    $tempConfig = $commonConfig;
-    if (isset($key) && !empty($key)) {
-        if (strpos($key, ".") !== false) {
-            $target = explode(".", $key);
-            foreach ($target as $k => $v) {
-                $tempConfig = $tempConfig[$v];
-            }
-            return $tempConfig;
-        } else {
-            return $commonConfig[$key];
-        }
+    $appConfig = require APP_CONFIG_PATH . "/App.php";
+    $databaseConfig = require APP_CONFIG_PATH . "/Database.php";
+    // $split = explode(".", trim($key));
+    // $config = trim($split[0]) . "Config";
+    switch ($key) {
+        case "app":
+        case "appConfig":
+            return $appConfig;
+            break;
+        case "db":
+        case "database":
+        case "databaseConfig":
+            return $databaseConfig;
+            break;
+        default:
+            return $appConfig;
+            break;
     }
-    return 0;
 }
 
 function serializeConfig(string $key)
@@ -126,7 +183,6 @@ function customErrorHandler($errCode, $errMsg, $errFile, $errLine, $errContext =
     // if($errCode != E_USER_NOTICE || $errCode != E_NOTICE) {
     //     throw new ErrorException($errMsg, $errCode, NULL, $errFile, $errLine);
     // }
-    echo "Global::customErrorHandler.\n";
 
     if ($errCode === E_ERROR || $errCode === E_USER_ERROR) {
         throw new ErrorException($errMsg, $errCode, null, $errFile, $errLine);
@@ -136,7 +192,7 @@ function customErrorHandler($errCode, $errMsg, $errFile, $errLine, $errContext =
         return;
     }
     if ($errCode === E_WARNING || $errCode === E_USER_WARNING) {
-        echo "<b><p style='font-size:24px'>WARNING:</p>[$errCode] $errMsg in <b> $errFile : $errLine</b><br />\n";
+        print("<b><p style='font-size:24px'>WARNING:</p>[$errCode] $errMsg in <b> $errFile : $errLine</b><br />\n");
         return;
     }
 }

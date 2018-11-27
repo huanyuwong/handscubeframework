@@ -52,7 +52,7 @@ trait UrlTrait
         $this->action = array_key_exists(3, $result) ? $result[3] : 'index';
 
         for ($i = 4; $i <= count($result) - 1; $i++) {
-            @$this->pathParams[] = $result[$i];
+            $this->pathParams[] = $result[$i];
         }
         return ['host' => $this->host, 'module' => $this->module, 'controller' => $this->controller, 'action' => $this->action, 'path_pars' => $this->pathParams, 'query' => $this->query];
 

@@ -6,7 +6,6 @@ trait GSImpTrait
 {
     public function __get($key)
     {
-        echo $key . "\n";
         if (method_exists($this, "beforeGetter")) {
             if ($this->beforeGetter($key)) {
                 return $this->beforeGetter($key);

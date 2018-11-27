@@ -4,23 +4,11 @@
  * This Class is part of Handscube framework.
  * Class Handscube #Handscube
  *
- * @Author J.W.
+ * @author J.W.
  */
 namespace Handscube;
 
 use App\Kernel\App;
-use Illuminate\Database\Capsule\Manager as Capsule;
-
-$capsule = new Capsule;
-
-// require_once __DIR__ . "/Global.php";
-
-exit("fdfff");
-
-// $controller = new BaseController();
-
-// $controller->test();
-// exit();
 
 class Handscube
 {
@@ -54,8 +42,10 @@ class Handscube
      */
     public static function __frameworkInit(string $path)
     {
+        self::$isRun = true;
+        date_default_timezone_set('Asia/Shanghai');
         self::$appPath = realpath($path) . "/";
-        self::$configPath = realpath(self::$appPath . "../config") . "/";
+        self::$configPath = realpath(self::$appPath . "../configs");
     }
 
     /**
@@ -65,11 +55,10 @@ class Handscube
      */
     public static function startApplication(string $path)
     {
-        // return self::isMake() ? self::$app : new Application($path);
+
         if (self::isMake()) {
             return self::$app;
         }
-        echo "Handscube starApplication() start a new Application.\n";
         self::$app = new App($path) ?: new Application($path);
         return self::$app;
     }
@@ -93,8 +82,6 @@ class Handscube
      */
     public static function run(string $appPath)
     {
-        //....
-        self::$isRun = true;
         self::__frameworkInit($appPath);
         self::__bootstrap(); //load some global functions or tools.
         return self::make($appPath);
@@ -127,8 +114,3 @@ class Handscube
     }
 
 }
-
-// $route = new RoutingFoundation();
-// print_r($route);
-// $controller = new BaseController();
-// $controller->test();

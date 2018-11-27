@@ -2,8 +2,10 @@
 
 namespace Handscube\Foundations;
 
+/**
+ * Abstract Base station.
+ */
 abstract class BaseStation
 {
 
-    // abstract public function handle(Request $request);
 }

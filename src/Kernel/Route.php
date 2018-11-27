@@ -2,12 +2,11 @@
 
 namespace Handscube\Kernel;
 
-use App\Models\CateContents;
 use Handscube\Assistants\Arr;
-use Handscube\Assistants\Composer;
 use Handscube\Foundations\Routing;
 use Handscube\Handscube;
 use Handscube\Kernel\Exceptions\InsideException;
+use Handscube\Kernel\Exceptions\InvalidException;
 use Handscube\Kernel\Exceptions\NotFoundException;
 use Handscube\Kernel\Exceptions\RouteException;
 use Handscube\Kernel\Guards\ControllerGuard;
@@ -22,12 +21,21 @@ use Illuminate\Contracts\Auth\Guard;
 
 class Route extends Routing
 {
-
     protected $module;
     protected $controller;
     protected $action;
-    protected $params;
+    protected $params = [];
+    public $paramsName = [];
+    public $paramsWithoutKey = [];
+    public $paramsWithKey = [];
+
+    protected $boundModels = [];
+    protected $boundParamsWithKey = [];
+    protected $boundParamsWithoutKey = [];
     protected $guard;
+    protected $actionGuard;
+
+    public $currentModelBund = [];
 
     const INDEX_MODULE_CTRL_SPACE = "App\Controllers";
 
@@ -36,7 +44,6 @@ class Route extends Routing
     public function __construct()
     {
         parent::__construct();
-        // $this->__registerRoute();
     }
 
     /**
@@ -46,7 +53,8 @@ class Route extends Routing
      */
     protected function __registerRoute()
     {
-        Composer::import($this->app->getRoutePath() . "/web.php");
+        // Composer::import($this->app->getRoutePath() . "/web.php");
+        require_once $this->app->getRoutePath() . '/web.php';
     }
 
     /**
@@ -58,10 +66,7 @@ class Route extends Routing
     public function handle($request)
     {
         parent::handle($request);
-        $cate = CateContents::frist();
-        ff($cate);
-        $this->runRoute($request);
-
+        return $this->runRoute($request);
     }
 
     public function init()
@@ -70,42 +75,6 @@ class Route extends Routing
     }
 
     /**
-     * Route method.
-     *
-     * @param string $path
-     * @param string $resource
-     * @return void
-     */
-    public static function get(string $path, $resource = '')
-    {
-        self::addRoute($path, $resource, "get");
-    }
-
-    public static function post(string $path, $resource = '')
-    {
-        self::addRoute($path, $resource, "post");
-    }
-
-    public static function put(string $path, $resource = '')
-    {
-        self::addRoute($path, $resource, "put");
-    }
-
-    public static function patch(string $path, $resource = '')
-    {
-        self::addRoute($path, $resource, "patch");
-    }
-
-    public static function delete(string $path, $resource = '')
-    {
-        self::addRoute($path, $resource, "delete");
-    }
-
-    public static function any(string $path, $resource)
-    {
-        self::addRoute($path, "any");
-    }
-    /**
      * Handle request and function params to controller guard.
      *
      * @param Guard $guard
@@ -113,21 +82,83 @@ class Route extends Routing
      * @param array $fnParmas
      * @return void
      */
-    public function handleToGuard(Request $request, array $fnParmas = [])
+    public function handleToGuard(Request $request, array $fnParams = [])
     {
+        if ($stations = $this->ensureCurrentActionStations()) {
+            $this->dispathcCurrentActionStations($request, $fnParams, $stations);
+        }
+        $this->callControllerGuardMethod($fnParams);
+        return;
+    }
 
-        if ($this->guard->only() && $this->guard->except()) {
-            throw new InsideException("Guard properties {only} and {except} can't have element at same time.");
+    /**
+     * Call action guard.
+     *
+     * @param [type] $params
+     * @return void
+     */
+    public function callControllerGuardMethod($params)
+    {
+        if (self::$modelsInstance) {
+            self::sortModelsInstance();
         }
-        if (in_array($this->action, $this->guard->except())) {
-            return;
-        }
-        if ($this->guard->register()) {
-            $this->checkActionStations($this->action, $request, $fnParmas);
+        if (method_exists($this->guard, $this->actionGuard)) {
+            $this->app->call($this->guard, $this->actionGuard, $params);
         }
     }
+
     /**
-     * Bind guard.
+     * Ensure current action stations.
+     *
+     * @return void
+     */
+    public function ensureCurrentActionStations()
+    {
+        $specifiedStations = $this->ensureSpecifiedStations();
+        if (in_array($this->action, $this->guard->only()) || !in_array($this->action, $this->guard->except())) {
+            if ($this->guard->specified() && array_key_exists($this->action, $this->guard->specified())) {
+                return array_merge($this->guard->register(), $specifiedStations);
+            } else {
+                return $this->guard->register();
+            }
+        }
+        if (in_array($this->action, $this->guard->except()) && $this->guard->specified() && array_key_exists($this->action, $this->guard->specified())) {
+            return $specifiedStations;
+        }
+        return;
+    }
+
+    /**
+     * Ensure spacifid stations in assoc guard.
+     *
+     * @return void
+     */
+    public function ensureSpecifiedStations()
+    {
+        return
+        array_key_exists($this->action, $this->guard->specified()) == false
+        ? null
+        : (is_string($this->guard->specified()[$this->action])
+            ? [$this->guard->specified()[$this->action]]
+            : $this->guard->specified()[$this->action]);
+    }
+
+    /**
+     * Dispatch stations to controller guard.
+     *
+     * @param Request $request
+     * @param array $params
+     * @param array $stations
+     * @return void
+     */
+    public function dispathcCurrentActionStations(Request $request, array $params, array $stations)
+    {
+        $this->checkBoundModel($this->guard);
+        $this->guard->handle($request, $params, $stations);
+    }
+
+    /**
+     * Bind guard instance.
      *
      * @param string $guard
      * @return void
@@ -141,6 +172,86 @@ class Route extends Routing
         throw new NotFoundException("Guard $guard do not exists.");
     }
 
+    public function bindCurrentActionGuard($action)
+    {
+        $this->actionGuard = $action . "Guard";
+    }
+
+    /**
+     * Check and inject a assoc model.
+     *
+     * @param [type] $className
+     * @return void
+     */
+    public function checkModelInject($className)
+    {
+        if ($className::type && $className::type === "Model") {
+            $this->injectsArr = $this->injectsArr ?: array_chunk($this->router->paramsWithKey, 1, true);
+            if ($this->injectsArr) {
+                $injectArr = array_shift($this->injectsArr);
+                ModelInjector::inject($className, $injectArr);
+            }
+        }
+    }
+
+    /**
+     * Bind model
+     *
+     * @param [string|array] $modelName
+     * @param [Closure] $fn
+     * @return [function return]
+     */
+    // public function bindModel($modelName, \Closure $fn)
+    // {
+    //     if (!$this->paramsWithKey) {
+    //         return false;
+    //     }
+    //     if (is_array($modelName) && !empty($modelName)) {
+    //         return $this->bindModelWithArr($modelName, $fn);
+    //     }
+    //     return $this->bindModelWithString($modelName, $fn);
+    // }
+
+    /**
+     * Bind model in array.
+     *
+     * @param array $modelName
+     * @param \Closure $fn
+     * @return [function return]
+     */
+    public function bindModelWithArr(array $modelName, \Closure $fn)
+    {
+        $modelInject = [];
+        foreach ($modelName as $name) {
+            $this->boundModels[] = $name;
+            if (array_key_exists($name, $this->paramsWithKey) && $this->paramsWithKey[$name]) {
+                $modelInject[] = $this->paramsWithKey[$name];
+            } else {
+                throw new InsideException("request param $name is not exists.");
+            }
+        }
+        return $fn(...$modelInject);
+    }
+
+    /**
+     * Bind model in string type.
+     *
+     * @param string $modelName
+     * @param \Closure $fn
+     * @return [function return]
+     */
+    public function bindModelWithString(string $modelName, \Closure $fn)
+    {
+        $modelName = strtolower($modelName);
+        if (is_string($modelName)) {
+            if (array_key_exists($modelName, $this->paramsWithKey) && $this->paramsWithKey[$modelName] !== false) {
+                $this->boundModels[] = $modelName;
+                return $fn($this->paramsWithKey[$modelName]);
+            }
+            throw new InsideException("request param $modelName is not exists.");
+        }
+    }
+
     /**
      * Check controller guard stations.
      *
@@ -151,12 +262,23 @@ class Route extends Routing
      */
     public function checkActionStations($action, Request $request, array $fnParmas = [])
     {
+        $this->checkBoundModel($this->guard);
         $this->guard->handle($request, $fnParmas);
-        // $this->app->make($this->guard->register(), false)->handle($request, $fnParmas);
-        // $actionGuard = strtolower(($action) . "Guard");
-        // if (method_exists($this->guard, $actionGuard)) {
-        //     $this->guard->$actionGuard($request, $fnParmas);
-        // }
+    }
+
+    /**
+     * Check specified class whether have model method.
+     *
+     * @param [type] $class
+     * @return void
+     */
+    public function checkBoundModel($class)
+    {
+        if (method_exists($class, "model")) {
+            call_user_func([$class, "model"]);
+            return true;
+        }
+        return false;
     }
     /**
      * Return controller guard.
@@ -195,7 +317,10 @@ class Route extends Routing
         $this->module = $module;
         $this->controller = $controller;
         $this->action = $action;
-        $this->params = $params ? $params : null;
+        $this->paramsWithKey = $params ? $params[1] : null;
+        $this->paramsName = $params ? array_keys($params[1]) : null;
+        $this->paramsWithoutKey = $params ? $params[0] : null;
+        $this->params = $params;
     }
 
     /**
@@ -210,23 +335,44 @@ class Route extends Routing
             $this->quickRegisterRoute($request->module, $request->controller, $request->action);
         }
         if ($match = $this->matchRoute($request)) {
-            //Check method auth when the route is exists.
-            $checkedRoute = $this->checkRouteMethod($match);
-            //Parse route resource as an array.
-            $resource = $this->parseResource($checkedRoute["resource"]);
-            $this->quickRegisterRoute($resource["module"], $resource["controller"], $resource["action"], $checkedRoute["params"]);
-            $currentGuard = $this->ensureCurrentGuard($this->module, $this->controller);
-            $this->bindGuard($currentGuard);
-            $this->handleToGuard($request, $this->params);
-            // $this->guard->handle($request,$fnParmas);
-            return array_key_exists("params", $checkedRoute) ?
-            $this->callRoute($request, $resource, $checkedRoute["params"]) :
-            $this->callRoute($request, $resource);
+            // ff($match);
+            $resource = $this->parseMatchedRoute($match);
+            $request->pathInfo = isset($this->params[1]) ?: [];
+            $this->registerControllerGuard($this->module, $this->controller);
+            $this->bindCurrentActionGuard($this->action);
+            $this->paramsWithoutKey
+            ? $this->handleToGuard($request, $this->paramsWithoutKey)
+            : $this->handleToGuard($request);
+            return $this->paramsWithKey
+            ? $this->callRoute($request, $resource, $this->paramsWithKey)
+            : $this->callRoute($request, $resource);
         } else {
             throw new RouteException("The route $request->uri dose not exists.");
         }
     }
 
+    /**
+     * Parse matched route.
+     *
+     * @param [type] $matchRoute
+     * @return void
+     */
+    public function parseMatchedRoute($matchRoute)
+    {
+        $checkedRoute = $this->checkRouteMethod($matchRoute);
+        $resource = $this->parseResource($checkedRoute["resource"]);
+        $resource['params'] = array_key_exists("params", $checkedRoute) ? $checkedRoute["params"] : [];
+        $this->quickRegisterRoute($resource["module"], $resource["controller"], $resource["action"], $resource['params']);
+        return $resource;
+    }
+
+    /**
+     * Get controller space in assoc controller.
+     *
+     * @param string $module
+     * @param string $controller
+     * @return void
+     */
     public function ensureControllerSpace(string $module, string $controller)
     {
         if ($module === "index") {
@@ -242,12 +388,14 @@ class Route extends Routing
      * @param string $controller
      * @return void
      */
-    public function ensureCurrentGuard(string $module, string $controller)
+    public function registerControllerGuard(string $module, string $controller)
     {
         if ($module === "index") {
-            return self::APP_GUARD_SPACE . "\\" . ucfirst($controller) . "Guard";
+            $guard = self::APP_GUARD_SPACE . "\\" . ucfirst($controller) . "Guard";
+        } else {
+            $guard = self::APP_GUARD_SPACE . "\\" . ucfirst($module) . "\\" . ucfirst($controller) . "Guard";
         }
-        return self::APP_GUARD_SPACE . "\\" . ucfirst($module) . "\\" . ucfirst($controller) . "Guard";
+        $this->bindGuard($guard);
     }
 
     /**
@@ -258,8 +406,12 @@ class Route extends Routing
      */
     public function matchRoute(Request $request)
     {
+        // ff(self::$routingTable);
         foreach (self::$routingTable as $path => $resource) {
-            if ($result = $this->matchOneRoute($request->uri, $path)) {
+            $trueUri = (strpos($request->uri, '?') !== false)
+            ? substr($request->uri, 0, strpos($request->uri, '?'))
+            : $request->uri;
+            if ($result = $this->matchOneRoute($trueUri, $path)) {
                 if (is_array($result)) {
                     $resource["params"] = $result;
                     return $resource;
@@ -279,15 +431,16 @@ class Route extends Routing
      */
     public function matchOneRoute($uri, $routePath)
     {
-
-        $matchResult = [];
+        $matchWithoutKey = [];
+        $matchWithKey = [];
         $uriSplit = Arr::drop(explode("/", $uri));
         $routeSplit = Arr::drop(explode("/", $routePath));
         if (count($uriSplit) === count($routeSplit)) {
             foreach ($routeSplit as $index => $item) {
                 if (strpos($item, "{") !== false && strpos($item, "}") !== false || strpos($item, ":") !== false) {
                     $item = str_replace(["{", "}", ":"], "", $item);
-                    $matchResult[] = strpos($uriSplit[$index], "?") === false ? $uriSplit[$index] : \substr($uriSplit[$index], 0, strpos($uriSplit[$index], "?"));
+                    $matchWithoutKey[] = strpos($uriSplit[$index], "?") === false ? $uriSplit[$index] : \substr($uriSplit[$index], 0, strpos($uriSplit[$index], "?"));
+                    $matchWithKey[$item] = strpos($uriSplit[$index], "?") === false ? $uriSplit[$index] : \substr($uriSplit[$index], 0, strpos($uriSplit[$index], "?"));
                     continue;
                 } else {
                     if ($uriSplit[$index] !== $item) {
@@ -299,7 +452,7 @@ class Route extends Routing
         } else {
             return false;
         }
-        return $matchResult ? $matchResult : 1;
+        return $matchWithoutKey ? [$matchWithoutKey, $matchWithKey] : 1;
 
     }
 
@@ -310,9 +463,8 @@ class Route extends Routing
      * @param [type] $resource
      * @return void
      */
-    public static function parseResource($resource)
+    public function parseResource($resource)
     {
-
         //when $resource is instanceof Closure.
         if (is_callable($resource)) {
             return $resource;
@@ -363,16 +515,191 @@ class Route extends Routing
 
     }
 
-    public function callRoute($request, $routeEntity, $params = [])
+    /**
+     * After guard checkd, handle this request to controller.
+     *
+     * @param [type] $request
+     * @param [type] $routeEntity
+     * @param array $params
+     * @return void
+     */
+    public function callRoute(Request $request, array $routes, array $params = [])
     {
-        if (is_callable($routeEntity)) {
-            return $params ? $routeEntity(...$params) : $routeEntity();
+        $ctrlName = $this->moduleCtrlSpace($routes["module"]) . "\\" . ucfirst($routes["controller"]) . "Controller";
+        if (class_exists($ctrlName)) {
+            if (method_exists($ctrlName, "model")) {
+                call_user_func([$ctrlName, "model"]); //Call controller model method.
+            }
+            if (self::$modelsInstance) {
+                $this->sortModelsInstance();
+            }
+            return $this->paramsWithoutKey
+            ? $this->callAction($ctrlName, $routes["action"], $this->paramsWithoutKey)
+            : $this->callAction($ctrlName, $routes['action']);
+        } else {
+            throw new NotFoundException("Controller $ctrlName dose not exists.");
         }
-        $this->quickRegisterRoute($routeEntity["module"], $routeEntity["controller"], $routeEntity["action"], $params);
-        // if ($guard = $this->haveControllerGuard($this->module, $this->controller, $this->action)) {
-        //     (new $guard)->handle($request);
-        // }
-        ff($this->params);
+    }
+
+    /**
+     * Sort modelsInstance.
+     *
+     * @return void
+     */
+    public static function sortModelsInstance()
+    {
+        if (self::$modelsAreSort !== true) {
+            self::$modelsInstance = Arr::sortWithKeyArray(self::this()->paramsName, self::$modelsInstance);
+            self::$modelsAreSort = true;
+        }
+    }
+
+    public static function shiftModel()
+    {
+        return array_shift($self::$modelsInstance);
+    }
+
+    /**
+     * Call action.
+     *
+     * @param string $controller
+     * @param string $action
+     * @param array $params
+     * @return void
+     */
+    public function callAction(string $controller, string $action, array $params = [])
+    {
+        if ($this->checkControllerAndAction($controller, $action) === true) {
+            $this->app->isControllerCall = true;
+            return $this->app->call($controller, $action, $params);
+        }
+    }
+
+    /**
+     * Check a controller or an action whether exists.
+     *
+     * @param string $controller
+     * @param string $action
+     * @return void
+     */
+    public function checkControllerAndAction(string $controller, string $action)
+    {
+        if (!class_exists($controller)) {
+            throw new NotFoundException('Controller ' . $controller . "is not exists!");
+        }
+        if (method_exists($controller, $action)) {
+            return true;
+        }
+        throw new NotFoundException('Action ' . $action . ' is not exists in ' . 'Controller ' . $controller);
+    }
+
+    /**
+     * Bind request param to model instance array.
+     *
+     * @param string $requestParam
+     * @param \Closure $fn
+     * @return void
+     */
+    public static function bind(string $requestParam, \Closure $fn)
+    {
+        if (!is_array(self::this()->paramsName)) {
+            return;
+        }
+        // ff($requestParam);
+        if (!\in_array($requestParam, self::this()->paramsName)) {
+            return;
+        };
+        if (!$fn($requestParam)) {
+            throw new InvalidException("Bind a invlid model!");
+        };
+        self::$modelsInstance[$requestParam] = $fn($requestParam);
+    }
+
+    /**
+     * Return model instances.
+     *
+     * @return void
+     */
+    public function getModelsInstance()
+    {
+        return self::$modelsInstance;
+    }
+
+    /**
+     * Instance route models by self::$modelsHandler.
+     *
+     * @return void
+     */
+    public function instanceRouteModels()
+    {
+        $modelsInstance = [];
+        if (self::$modelsInstance) {
+            return;
+        }
+        foreach (self::$modelsHandler as $requestParam => $fn) {
+            if (!self::$modelsInstance[$requestParam]) {
+                $modelsInstance[$requestParam] = $this->injectModels($requestParam, $fn);
+            }
+        }
+        self::$modelsInstance = Arr::sortWithKeyArray($this->paramsName, $modelsInstance);
+    }
+
+    /**
+     * return What Closure return.
+     *
+     * @param string $key
+     * @param \Closure $fn
+     * @return void
+     */
+    public function injectModels(string $key, \Closure $fn)
+    {
+        return $fn($key);
+    }
+
+    /**
+     * Check controller whether had bind model.
+     *
+     * @param [type] $controller
+     * @return boolean
+     */
+    public function isControllerBindModel($controller)
+    {
+        return method_exists($controller, "model");
+    }
+
+    /**
+     * Get module controller namespace
+     *
+     * @param string $module
+     * @return void
+     */
+    public function moduleCtrlSpace(string $module = "index")
+    {
+        if ($module === "index") {
+            return $this->indexModuleCtrlSpace();
+        }
+        return $this->commonModuleCtrlSpace($module);
+    }
+
+    /**
+     * index module controller namespace.
+     *
+     * @return void
+     */
+    public function indexModuleCtrlSpace()
+    {
+        return self::INDEX_MODULE_CTRL_SPACE;
+    }
+
+    /**
+     * other moudle controller namespace.
+     *
+     * @param [type] $module
+     * @return void
+     */
+    public function commonModuleCtrlSpace($module)
+    {
+        return self::INDEX_MODULE_CTRL_SPACE . "\\" . ucfirst(strtolower($module));
     }
 
     /**
@@ -420,6 +747,11 @@ class Route extends Routing
         return $this->app->appConfig["router"]["auto_parse"] ? 1 : 0;
     }
 
+    public function showResponse($actionFn)
+    {
+        // echo $actionF
+    }
+
     /**
      * get route resource by path.
      *
@@ -432,10 +764,5 @@ class Route extends Routing
             return self::$routingTable($path);
         }
         return false;
-    }
-
-    public function __destruct()
-    {
-        echo "Route __destruct!\n";
     }
 }

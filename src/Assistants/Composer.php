@@ -4,26 +4,31 @@ namespace Handscube\Assistants;
 
 use Handscube\Abstracts\Features\FastcallAble;
 
-class Composer extends Assistant implements FastcallAble{
+class Composer extends Assistant implements FastcallAble
+{
 
+    public function __construct()
+    {
 
-    public function __construct(){
-
-        
     }
 
-    public static function apply(){
+    public static function apply()
+    {
         return __CLASS__;
     }
 
-    public static function use($path){
-        return self::import($path,true);
+    function use ($path, $isOnce = true) {
+        return self::import($path, true, $isOnce);
     }
 
-    public static function import(string $path, bool $shouldReturn = false){
-        if($shouldReturn){
-            return require_once $path;
+    public static function import(string $path, bool $shouldReturn = false, $isOnce = true)
+    {
+        if ($shouldReturn) {
+            return $isOnce ? require_once $path : require $path;
         }
-            require_once $path;       
+        if ($isOnce) {
+            require_once $path;
+        }
+        require $path;
     }
 }

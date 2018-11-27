@@ -15,4 +15,10 @@ trait AppAccesserTrait
     {
         return Handscube::$app;
     }
+
+    public static function app()
+    {
+        return Handscube::$app;
+    }
+
 }
