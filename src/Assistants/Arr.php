@@ -85,4 +85,17 @@ class Arr
         }
         return $newSortArr;
     }
+
+    /**
+     * Clear array.
+     *
+     * @param array $arr
+     * @return void
+     */
+    public static function clearArr(array &$arr)
+    {
+        foreach ($arr as $v) {
+            array_pop($arr);
+        }
+    }
 }

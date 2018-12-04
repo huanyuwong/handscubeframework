@@ -20,8 +20,9 @@ class Collection extends BaseCollection
     }
 
     /**
-     * Add element to collection,replaceing existing key when $forceReplaced is true,
-     * and do noting with existing key when $foreceReplaced is false.
+     * Add element to collection,
+     * Replaceing existing key when the param $forceReplaced is true,
+     * and do noting with existing key when the param $foreceReplaced is false.
      *
      * @param array $newContainer
      * @param boolean $forceRepaced
@@ -29,18 +30,21 @@ class Collection extends BaseCollection
      */
     public function replace(array $newContainer, bool $forceRepaced = true)
     {
-        foreach ($newContainer as $key => $value) {
-            if ($forceRepaced === true) {
+        if ($forceRepaced === true) {
+            foreach ($newContainer as $key => $value) {
                 $this->set($key, $value);
             }
-            $this->setnx($key, $value);
+        } else {
+            foreach ($newContainer as $key => $value) {
+                $this->setnx($key, $value);
+            }
         }
         return true;
 
     }
 
     /**
-     *Replace element in colleciton that does not exists.
+     * Replace element in colleciton that does not exists.
      *
      * @param array $newContainer
      * @return void
@@ -71,11 +75,11 @@ class Collection extends BaseCollection
      */
     public function setnx($key, $value)
     {
-        if ($this->container[$key]) {
-            return false;
+        if (!$this->container[$key]) {
+            $this->container[$key] = $value;
+            return true;
         }
-        $this->container[$key] = $value;
-        return true;
+        return false;
     }
 
     /**
@@ -130,6 +134,7 @@ class Collection extends BaseCollection
     {
         return array_key_exists($key, $this->container);
     }
+
     /** ArrayAccess interface imp */
 
     public function offsetSet($key, $value)

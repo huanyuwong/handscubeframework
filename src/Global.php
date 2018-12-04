@@ -5,7 +5,6 @@
  *
  *  Class Handscube #Handscube
  *  @author J.W.
- *  "workbench.editor.enablePreview": false,
  */
 
 use Handscube\Assistants\Arr;
@@ -13,9 +12,9 @@ use Handscube\Handscube;
 use Handscube\Kernel\Route;
 
 define("ROOT_PATH", __DIR__ . "/");
-
 define("APP_PATH", Handscube::$appPath);
 define("APP_CONFIG_PATH", Handscube::$configPath);
+define("APP_VIEW_PATH", Handscube::$viewPath);
 
 /**
  *
@@ -109,8 +108,9 @@ function f($param)
 }
 
 /**
- * get route through route name.
- *
+ * Get route by passing in route name.
+ * e.g. [route name with no parameters] route('routeName'),
+ * [route name with parameters] route('routeName',[id=1,token=123]).
  * @param [type] $routeName
  * @param [type] $routeParams
  * @return [string route(url)]
@@ -139,8 +139,6 @@ function config($key = 'app')
 {
     $appConfig = require APP_CONFIG_PATH . "/App.php";
     $databaseConfig = require APP_CONFIG_PATH . "/Database.php";
-    // $split = explode(".", trim($key));
-    // $config = trim($split[0]) . "Config";
     switch ($key) {
         case "app":
         case "appConfig":
@@ -157,6 +155,12 @@ function config($key = 'app')
     }
 }
 
+/**
+ * Serialise config.
+ *
+ * @param string $key
+ * @return void
+ */
 function serializeConfig(string $key)
 {
     $value = config($key);
@@ -168,7 +172,6 @@ function mapNamespace($name, $type)
 {
     $prefix = unserialize(COMMON_NAMESPCE)[strtoupper($type)];
     return $prefix . ucfirst($name) . __CONTROLLER_SUFFIX__;
-
 }
 
 function mapCtrlNamespace($moduleName, $ctrlName)
@@ -179,7 +182,6 @@ function mapCtrlNamespace($moduleName, $ctrlName)
 
 function customErrorHandler($errCode, $errMsg, $errFile, $errLine, $errContext = null)
 {
-
     // if($errCode != E_USER_NOTICE || $errCode != E_NOTICE) {
     //     throw new ErrorException($errMsg, $errCode, NULL, $errFile, $errLine);
     // }
@@ -188,11 +190,11 @@ function customErrorHandler($errCode, $errMsg, $errFile, $errLine, $errContext =
         throw new ErrorException($errMsg, $errCode, null, $errFile, $errLine);
     }
     if ($errCode === E_NOTICE || $errCode === E_USER_NOTICE) {
-        echo "<b><p style='font-size:24px'>NOTICE:</p> </b> [$errCode] $errMsg in <b> $errFile : $errLine</b><br />\n";
+        echo "<b><p style='font-size:20px'>NOTICE:</p> </b> [$errCode] $errMsg in <b> $errFile : $errLine</b><br />\n";
         return;
     }
     if ($errCode === E_WARNING || $errCode === E_USER_WARNING) {
-        print("<b><p style='font-size:24px'>WARNING:</p>[$errCode] $errMsg in <b> $errFile : $errLine</b><br />\n");
+        echo "<p style='font-size:20px;margin:0'><b>WARNING[$errCode]:</b></p>$errMsg in <b> $errFile : $errLine<br />\n";
         return;
     }
 }
@@ -208,7 +210,7 @@ function customExceptionHandler(\Throwable $e)
         $errorType = get_class($e);
     } else {
         $pos = strrpos(get_class($e), "\\") . "\n";
-        $errorType = substr(get_class($e), $pos + 1);
+        $errorType = substr(get_class($e), (int) $pos + 1);
 
     }
     //Handle custom User error.
@@ -219,18 +221,29 @@ function customExceptionHandler(\Throwable $e)
         $errFile = $e->getFile();
         $errLine = $e->getLine();
     }
+    $errMsg = $e->getMessage();
+    $errCode = $e->getCode();
 
-    echo "<h1 style='margin-bottom:0'>(⊙_⊙;)</h1><br>";
-    echo "<h2 style='margin:0'>" . $errorType . " : " . $e->getMessage() . "</h2><br/>" .
-        "Thrown in " .
-        "<b style='color:red'>" . $errFile . "</b>" .
-        " : <b style='color:red'>" . $errLine . "</b><br>";
-    echo "<hr />";
-    echo "<p style='margin-bottom:0;padding:0;line-height:20px;font-size:20px'><b>Stack Trace:</b></p>";
-    echo "<b>" . resetTrace($e->getTraceAsString()) . "</b>";
-    if ($e->getCode() === 8) {
-        return 1;
-    }
+    $exception = makeExceptionToMsg($e->getTraceAsString());
+    $exception['errType'] = $errorType;
+    $exception['errFile'] = $errFile;
+    $exception['errLine'] = $errLine;
+    $exception['errMsg'] = $errMsg;
+    $exception['errCode'] = $errCode;
+
+    require_once __DIR__ . '/Kernel/Exceptions/ExceptionPage.php';
+
+    // echo "<h1 style='margin-bottom:0'>(⊙_⊙;)</h1><br>";
+    // echo "<h2 style='margin:0'>" . $errorType . " : " . $e->getMessage() . "</h2><br/>" .
+    //     "Thrown in " .
+    //     "<b style='color:red'>" . $errFile . "</b>" .
+    //     " : <b style='color:red'>" . $errLine . "</b><br>";
+    // echo "<hr />";
+    // echo "<p style='margin-bottom:0;padding:0;line-height:20px;font-size:20px'><b>Stack Trace:</b></p>";
+    // echo "<b>" . resetTrace($e->getTraceAsString()) . "</b>";
+    // if ($e->getCode() === 8) {
+    //     return 1;
+    // }
 
 }
 
@@ -243,6 +256,15 @@ function resetTrace($trace)
 function handleNotice(\Exceptions $e)
 {
     return 1;
+}
+
+function makeExceptionToMsg(string $exception)
+{
+    preg_match_all('/\#\d\s*([^:]+)\:([^\n\r]*)/', $exception, $matches);
+    return [
+        'files' => $matches[1],
+        'methods' => $matches[2],
+    ];
 }
 
 /**

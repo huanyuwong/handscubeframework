@@ -11,5 +11,6 @@ class AppGuard extends Guard
 
     protected $register = [
         \Handscube\Kernel\Stations\UrlDecodeStation::class,
+        // AccessTokenCheckStation::class,
     ];
 }

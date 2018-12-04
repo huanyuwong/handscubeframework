@@ -4,6 +4,7 @@ namespace Handscube\Kernel;
 
 use Handscube\Abstracts\App;
 use Handscube\Abstracts\Features\GSAble;
+use Handscube\Facades\Session;
 use Handscube\Handscube;
 use Handscube\Kernel\Db;
 use Handscube\Kernel\Exceptions\AuthException;
@@ -15,6 +16,9 @@ use Handscube\Kernel\Guard;
 use Handscube\Kernel\Guards\AppGuard;
 use Handscube\Kernel\Request;
 use Handscube\Kernel\Response;
+use Handscube\Kernel\Schedules\EventSchedule;
+use Handscube\Kernel\Schedules\Schedule;
+use Handscube\Kernel\View;
 
 require_once __DIR__ . "//../functions.php";
 
@@ -38,13 +42,27 @@ class Application extends App implements GSAble
     private $routePath;
     private $configPath;
 
+    /**
+     * Components variables.
+     *
+     * @var array
+     */
     protected $deferComponentsRecord = [];
     protected $componentsMap = [];
-
     public $componentsNameMap = [];
+    /**
+     * Config variables.
+     *
+     * @var array
+     */
     public $appConfig = [];
     public $databaseConfig = [];
 
+    /**
+     * Http variables.
+     *
+     * @var [type]
+     */
     public $module;
     public $controller;
     public $action;
@@ -57,6 +75,7 @@ class Application extends App implements GSAble
     private $appKey;
     public $injectsArr;
 
+    //Const.
     const __CTRL_NAMESPACE__ = "App\\Controllers\\";
 
     /**
@@ -84,8 +103,8 @@ class Application extends App implements GSAble
     }
 
     /**
-     * init function.
-     * Did some work on registering App Guard and boot ORM.
+     * Init function.
+     * Did some work like init key,registering App Guard and boot ORM.
      * @return void
      */
     protected function init()
@@ -94,20 +113,27 @@ class Application extends App implements GSAble
         $this->registerSessionDriver();
         $this->registerGuard();
         $this->registerORM();
+        $this->registerNecessaryData();
     }
 
-    // protected function startSession()
-    // {
-    //     Session::start();
-    // }
-
+    /**
+     * Register session drivers.
+     * [mysql,session]
+     *
+     * @return void
+     */
     protected function registerSessionDriver()
     {
-        $driverName = environment()['SESSION_DRIVER'] ?: $this->appConcig['session_driver'];
+        $driverName = environment()['SESSION_DRIVER'] ?: $this->appConfig['session_driver'];
+        if (!$driverName) {
+            session_name('HANDSCUBE_ID');
+            session_start();
+            return;
+        }
         $driver = 'Handscube\Kernel\Drivers\Session\\' . ucfirst(strtolower($driverName)) . 'Driver'::class;
         $sessionDriver = new $driver;
         session_set_save_handler($sessionDriver);
-        Session::start();
+        session_start();
     }
 
     /**
@@ -139,7 +165,7 @@ class Application extends App implements GSAble
     }
 
     /**
-     * Create app key
+     * Create app key if it not exists.
      *
      * @return void
      */
@@ -177,7 +203,7 @@ class Application extends App implements GSAble
 
     /**
      * Get access key.
-     *
+     * Used by sign cors access token.
      * @return void
      */
     public function getAccessKey()
@@ -191,7 +217,7 @@ class Application extends App implements GSAble
 
     /**
      * Get app key.
-     *
+     * Used by create RFC7519 token and encrypt cookie.
      * @return void
      */
     public function getAppKey()
@@ -200,7 +226,7 @@ class Application extends App implements GSAble
     }
 
     /**
-     * Check the orgin.
+     * Check the origin.
      *
      * @return void
      */
@@ -282,7 +308,7 @@ class Application extends App implements GSAble
     }
 
     /**
-     * Register ORM.
+     * Boot ORM.
      *
      * @return void
      */
@@ -302,7 +328,6 @@ class Application extends App implements GSAble
     public function registerComponents($components, $index = "", $shouldLoadDepends = true)
     {
         if (is_array($components) && !empty($components)) {
-
             foreach ($components as $key => $component) {
                 if ($this->componentExists($component)) {
                     if (is_string($key)) {
@@ -334,6 +359,30 @@ class Application extends App implements GSAble
     }
 
     /**
+     * Register some necessary data.
+     *
+     * @return void
+     */
+    public function registerNecessaryData()
+    {
+        $this->registerScheduleData();
+    }
+
+    /**
+     * Register schedule data.
+     *
+     * @return void
+     */
+    public function registerScheduleData()
+    {
+        new EventSchedule(
+            \App\Suppliers\ScheduleSupplier::$listeners,
+            \App\Suppliers\ScheduleSupplier::$subscribers,
+            \App\Suppliers\ScheduleSupplier::$observers
+        );
+    }
+
+    /**
      * Handle Request and register it as an app component.
      *
      * @param Request $request
@@ -347,6 +396,11 @@ class Application extends App implements GSAble
         return $this->router->handle($this->request);
     }
 
+    /**
+     * Return the application guard.
+     *
+     * @return void
+     */
     public function guard()
     {
         return $this->guard;
@@ -386,18 +440,16 @@ class Application extends App implements GSAble
     {
 
         $classKey = $classAlias ? $classAlias : strtolower(\substr($class, strrpos($class, "\\") + 1));
-
         if (array_key_exists($classKey, $this->componentsMap) && $this->componentsMap[$classKey]) {
             return $this->componentsMap[$classKey];
         }
-
         $this->componentsMap[$classKey] = $this->make($class, $isLoadDepends);
         $this->componentsNameMap[$class] = $classKey;
         return $this->componentsMap[$classKey];
     }
 
     /**
-     * implement GSAble interface to implement getter setter functionality.
+     * implement GSAble interface to implement getter and setter functionality.
      * e.g.
      * if you access a property that does not exist like this: $this->app->valName
      * the class that implements this interface will call $this->app->getValName() method at first.
@@ -470,7 +522,6 @@ class Application extends App implements GSAble
      */
     public function registerDeferComponent($key)
     {
-
         if (!empty($this->appConfig["components"]["defer"])) {
             foreach ($this->appConfig["components"]["defer"] as $idx => $deferComponent) {
                 if (is_string($idx)) {
@@ -576,14 +627,13 @@ class Application extends App implements GSAble
     }
 
     /**
-     * Get action bound model.
+     * Get action bound parameter model.
      *
      * @param [type] $className
      * @return void
      */
     public function getActionBoundModel($className)
     {
-        // ff(Route::$modelsInstance);
         if (Route::$modelsInstance && Route::$modelsAreSort) {
             if ($model = array_shift(Route::$modelsInstance)) {
                 array_shift($this->router->paramsWithoutKey);
@@ -605,10 +655,18 @@ class Application extends App implements GSAble
         throw new InvalidException("Model id $id is invalid");
     }
 
+    /**
+     * Send response in differnt type.
+     *
+     * @param [type] $response
+     * @return void
+     */
     public function send($response)
     {
         if ($response instanceof Response) {
             $response->send();
+        } else if ($response instanceof View) {
+            echo $response->getContents();
         } else if (is_string($response)) {
             echo $response;
         } else if (is_array($response) || is_object($response)) {
@@ -618,38 +676,49 @@ class Application extends App implements GSAble
         }
     }
 
+    /**
+     * Return a new Handscube\Kernel\Response object.
+     *
+     * @return void
+     */
     public function response()
     {
         return new Response();
     }
 
-    public function otherwise()
-    {
-
-    }
-
-    public function setExcludeClass(string $class)
-    {
-
-    }
-
+    /**
+     * Return exculde classes that not contain with Ioc.
+     *
+     * @return void
+     */
     public function getExculdeClasses()
     {
         return $this->$excludeIoc;
     }
 
+    /**
+     * Return instance maps.
+     *
+     * @return void
+     */
     public function getInstanceMap()
     {
         return $this->$instacneMap;
     }
 
+    /**
+     * Load controller file.
+     *
+     * @param [type] $ctrlName
+     * @return void
+     */
     public function load($ctrlName)
     {
         require_once $this->ctrlPath . $ctrlName . ".php";
     }
 
     /**
-     * return application path
+     * Return application path
      *
      * @return string application path
      */
@@ -659,7 +728,7 @@ class Application extends App implements GSAble
     }
 
     /**
-     * get controller path.
+     * Get controller path.
      *
      * @return string controller path
      */
@@ -669,7 +738,7 @@ class Application extends App implements GSAble
     }
 
     /**
-     * get router path
+     * Get router path
      *
      * @return string route path.
      */
@@ -689,6 +758,9 @@ class Application extends App implements GSAble
         return class_exists($className);
     }
 
+    /**
+     * Destruct.
+     */
     public function __destruct()
     {
         unset($this->componentsMap);

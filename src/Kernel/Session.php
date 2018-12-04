@@ -131,6 +131,16 @@ class Session extends Component
     }
 
     /**
+     * Show all session.
+     *
+     * @return void
+     */
+    public function all()
+    {
+        return $_SESSION;
+    }
+
+    /**
      * Destory all session datas
      *
      * @return void

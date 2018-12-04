@@ -66,8 +66,8 @@ class RedisDriver implements SessionDriverAble
         return true;
     }
 
-    // public function __destruct()
-    // {
-    //     session_write_close();
-    // }
+    public function __destruct()
+    {
+        @session_write_close();
+    }
 }

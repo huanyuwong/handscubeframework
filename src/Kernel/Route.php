@@ -5,13 +5,14 @@ namespace Handscube\Kernel;
 use Handscube\Assistants\Arr;
 use Handscube\Foundations\Routing;
 use Handscube\Handscube;
+use Handscube\Kernel\Exceptions\AuthException;
 use Handscube\Kernel\Exceptions\InsideException;
 use Handscube\Kernel\Exceptions\InvalidException;
 use Handscube\Kernel\Exceptions\NotFoundException;
 use Handscube\Kernel\Exceptions\RouteException;
+use Handscube\Kernel\Guard;
 use Handscube\Kernel\Guards\ControllerGuard;
 use Handscube\Kernel\Request;
-use Illuminate\Contracts\Auth\Guard;
 
 /***
  * Route Class #Handscube.
@@ -21,6 +22,9 @@ use Illuminate\Contracts\Auth\Guard;
 
 class Route extends Routing
 {
+
+    const MAX_RECORD_ROUTE = 10;
+
     protected $module;
     protected $controller;
     protected $action;
@@ -67,11 +71,6 @@ class Route extends Routing
     {
         parent::handle($request);
         return $this->runRoute($request);
-    }
-
-    public function init()
-    {
-
     }
 
     /**
@@ -135,7 +134,6 @@ class Route extends Routing
      */
     public function ensureSpecifiedStations()
     {
-        return
         array_key_exists($this->action, $this->guard->specified()) == false
         ? null
         : (is_string($this->guard->specified()[$this->action])
@@ -167,9 +165,9 @@ class Route extends Routing
     {
         if (class_exists($guard)) {
             $this->guard = $this->guard ?: $this->app->make($guard, false);
-            return true;
+            return ($this->guard instanceof Guard);
         }
-        throw new NotFoundException("Guard $guard do not exists.");
+        return false;
     }
 
     public function bindCurrentActionGuard($action)
@@ -291,19 +289,6 @@ class Route extends Routing
     }
 
     /**
-     * Register route use an array.
-     * e.g. Route::match(['get','post'],"/test",function(){});
-     * @param array $routeType
-     * @param string $path
-     * @param [type] $resource
-     * @return void
-     */
-    public static function match(array $routeType, string $path, $resource)
-    {
-        self::addRoute($path, $resource, $routeType);
-    }
-
-    /**
      * Register module,controller,action to this.
      *
      * @param [type] $module
@@ -331,18 +316,19 @@ class Route extends Routing
      */
     public function runRoute($request)
     {
-        if (!$this->shouldAutoParse()) {
-            $this->quickRegisterRoute($request->module, $request->controller, $request->action);
-        }
+        // if (!$this->shouldAutoParse()) {
+        //     $this->quickRegisterRoute($request->module, $request->controller, $request->action);
+        // }
         if ($match = $this->matchRoute($request)) {
-            // ff($match);
             $resource = $this->parseMatchedRoute($match);
-            $request->pathInfo = isset($this->params[1]) ?: [];
-            $this->registerControllerGuard($this->module, $this->controller);
-            $this->bindCurrentActionGuard($this->action);
-            $this->paramsWithoutKey
-            ? $this->handleToGuard($request, $this->paramsWithoutKey)
-            : $this->handleToGuard($request);
+            // ff($resource);
+            $request->pathInfo = isset($this->params[1]) ? $this->params[1] : [];
+            if ($this->registerControllerGuard($this->module, $this->controller)) {
+                $this->bindCurrentActionGuard($this->action);
+                $this->paramsWithoutKey
+                ? $this->handleToGuard($request, $this->paramsWithoutKey)
+                : $this->handleToGuard($request);
+            }
             return $this->paramsWithKey
             ? $this->callRoute($request, $resource, $this->paramsWithKey)
             : $this->callRoute($request, $resource);
@@ -360,8 +346,10 @@ class Route extends Routing
     public function parseMatchedRoute($matchRoute)
     {
         $checkedRoute = $this->checkRouteMethod($matchRoute);
-        $resource = $this->parseResource($checkedRoute["resource"]);
-        $resource['params'] = array_key_exists("params", $checkedRoute) ? $checkedRoute["params"] : [];
+        $currentRequestType = $this->app->request->requestType;
+        $resource = $this->parseResource($checkedRoute[$currentRequestType]["resource"]);
+        // ff($resource); ['module'=>'index','controller','action'];
+        $resource['params'] = isset($checkedRoute[$currentRequestType]["params"]) ? $checkedRoute[$currentRequestType]["params"] : [];
         $this->quickRegisterRoute($resource["module"], $resource["controller"], $resource["action"], $resource['params']);
         return $resource;
     }
@@ -395,7 +383,7 @@ class Route extends Routing
         } else {
             $guard = self::APP_GUARD_SPACE . "\\" . ucfirst($module) . "\\" . ucfirst($controller) . "Guard";
         }
-        $this->bindGuard($guard);
+        return $this->bindGuard($guard);
     }
 
     /**
@@ -406,14 +394,17 @@ class Route extends Routing
      */
     public function matchRoute(Request $request)
     {
-        // ff(self::$routingTable);
         foreach (self::$routingTable as $path => $resource) {
             $trueUri = (strpos($request->uri, '?') !== false)
             ? substr($request->uri, 0, strpos($request->uri, '?'))
             : $request->uri;
             if ($result = $this->matchOneRoute($trueUri, $path)) {
                 if (is_array($result)) {
-                    $resource["params"] = $result;
+                    foreach ($resource as $type => $item) {
+                        if ($type === 'get' || strpos($type, 'get') !== false) {
+                            $resource[$type]['params'] = $result;
+                        }
+                    }
                     return $resource;
                 }
                 return $resource;
@@ -421,6 +412,28 @@ class Route extends Routing
         }
         return false;
     }
+
+    // resource
+    //  Array
+    // (
+    //    [type] => get
+    //   [resource] => user@show
+    //  )
+
+//result
+    // Array
+    // (
+    //     [0] => Array
+    //         (
+    //             [0] => 2
+    //         )
+
+//     [1] => Array
+    //         (
+    //             [id] => 2
+    //         )
+
+// )
 
     /**
      * Matching route through given the request uri and route table path.
@@ -497,20 +510,21 @@ class Route extends Routing
      */
     public function checkRouteMethod($matches)
     {
-        if (strpos($matches["type"], ",") !== false) {
-            $types = explode(",", $matches["type"]);
-            foreach ($types as $type) {
-                if ($this->app->request->requestType === $type) {
-                    $matches["type"] = $type;
-                    return $matches;
+        foreach ($matches as $typeIdx => $match) {
+            if ($typeIdx === 'any'
+                || $typeIdx === $this->app->request->requestType) {
+                return [$this->app->request->requestType => $match];
+            } elseif (strpos($typeIdx, '|') !== false) {
+                $types = explode("|", $typeIdx);
+                foreach ($types as $type) {
+                    if ($this->app->request->requestType === $type) {
+                        return [$type => $match];
+                    }
                 }
+            } else {
+                throw new AuthException("Access denied cause request type is not allowed to access the route.");
+                return false;
             }
-        } else if ($this->app->request->requestType === $matches["type"] && $matches["type"] !== "any") {
-            return $matches;
-        } else if ($matches["type"] === "any") {
-            return $matches;
-        } else {
-            throw new RouteException("The route access denied cause request type is not allowed in this case.");
         }
 
     }

@@ -18,6 +18,7 @@ class Handscube
 
     public static $appPath;
     public static $configPath;
+    public static $viewPath;
 
     public static $isRun = false;
     public static $isMakeApp = false;
@@ -46,6 +47,7 @@ class Handscube
         date_default_timezone_set('Asia/Shanghai');
         self::$appPath = realpath($path) . "/";
         self::$configPath = realpath(self::$appPath . "../configs");
+        self::$viewPath = realpath(self::$appPath . "../") . "/resources/views";
     }
 
     /**

@@ -5,14 +5,21 @@ namespace Handscube\Kernel;
 use Handscube\Assistants\Encrypt;
 use Handscube\Traits\AppAccesserTrait;
 
+/**
+ * CrossGate class [c] Handscube.
+ * @author J.W. <email@email.com>
+ */
+
 class CrossGate
 {
     use AppAccesserTrait;
 
+    //Allow domains.
     protected static $allowDomains = [
 
     ];
 
+    //Access Key.
     private static $accessToken;
 
     public static function allow(string $url)
@@ -20,6 +27,12 @@ class CrossGate
 
     }
 
+    /**
+     * CORS configure.
+     *
+     * @param array $domainConfig
+     * @return void
+     */
     public static function openCross(array $domainConfig)
     {
         if (!isset($_SERVER["HTTP_ORIGIN"])) {
@@ -30,7 +43,6 @@ class CrossGate
             header("Access-Control-Allow-Origin:$origin");
             header("Access-Control-Allow-Headers:" . implode(",", $domainConfig["allow_headers"]));
             header("Access-Control-Allow-Methods:" . implode(",", $domainConfig["allow_methods"]));
-            // ff($domainConfig['enable_cookie']);
             header("Access-Control-Allow-Credentials:" . $domainConfig["enable_cookie"] ?: "false");
             if ($domainConfig["expose_headers"] && is_array($domainConfig["expose_header"])) {
                 foreach ($domainConfig["expose_headers"] as $expose_header) {
@@ -46,12 +58,22 @@ class CrossGate
         return $body;
     }
 
+    /**
+     * Sign api access token.
+     *
+     * @return void
+     */
     public static function signToken()
     {
         $body = base64_encode(urlencode(self::createKey()));
         return base64_encode(mt_rand(100, 1000)) . '.' . $body . '==';
     }
 
+    /**
+     * Get application access key.
+     *
+     * @return void
+     */
     public static function getAccessKey()
     {
         return self::app()->getAccessKey();
@@ -60,7 +82,7 @@ class CrossGate
     /**
      * Create access token.
      *
-     * @param array $data
+     * @param array $data [input]
      * @param string $accessKey
      * @return void
      */

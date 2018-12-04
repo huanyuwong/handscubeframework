@@ -2,12 +2,13 @@
 
 namespace Handscube\Kernel;
 
+use Handscube\Assistants\Cookie;
 use Handscube\Kernel\Http\RequestHeader;
 use Handscube\Kernel\Session;
 
 /**
  * Class Request. [c] Handscube.
- * Simple implementation of HTTP request.（ no PSR :（  ）
+ * Extremly simple implementation of HTTP request.
  * You can handle it through calling handle function which was implementation with interface Cube.
  *
  * @author J.W. <email@email.com>
@@ -37,6 +38,7 @@ class Request
     public $action;
 
     public $host; //Request Host.
+    public $home; //Home page.
     public $uri; //Request Uri.
     public $url; //Request Url.
     public $protocol = 'http'; //Request schema.
@@ -53,11 +55,9 @@ class Request
 
     public function __construct($url = '')
     {
-
         $this->session = new Session();
         $this->__boot();
         $this->__init();
-        // self::emit("instance",["status"=>"new Requet"]);
     }
 
     /**
@@ -68,7 +68,7 @@ class Request
     private function __boot()
     {
         $this->header = new RequestHeader($this->getHeaders());
-        // $this->_server = $_SERVER;
+        $this->_server = $_SERVER;
         $this->query = $_GET;
         $this->post = $_POST;
         $this->request = $_REQUEST;
@@ -88,6 +88,7 @@ class Request
         $this->uri = $this->uri ? $this->uri : $_SERVER['REQUEST_URI'];
         $this->protocol = array_key_exists("REQUEST_SCHEME", $_SERVER) ? $_SERVER['REQUEST_SCHEME'] : 'http';
         $this->url = $this->protocol . '://' . $this->host . $this->uri;
+        $this->home = $this->protocol . '://' . $this->host;
         // $this->parseUrl();
     }
 
@@ -144,12 +145,24 @@ class Request
         return [];
     }
 
+    /**
+     * Check whether input is json or not.
+     *
+     * @param [type] $input
+     * @return void
+     */
     public function inputIsJson($input)
     {
         return null === \json_decode($input) ? false : true;
         // return \json_decode($input) ? true : false;
     }
 
+    /**
+     * Check whether input is raw or not.
+     *
+     * @param [type] $input
+     * @return void
+     */
     public function inputIsRaw($input)
     {
         if (is_string($input)) {
@@ -158,23 +171,31 @@ class Request
         return false;
     }
 
-    public static function test()
-    {
-        echo "Test from request.";
-    }
-
+    /**
+     * Emit event.
+     *
+     * @param [type] $name
+     * @param [type] $message
+     * @param [type] $from
+     * @return void
+     */
     public static function emit($name, $message, $from = __CLASS__)
     {
         // return Event::emit($from, $name, $message);
     }
 
+    /**
+     * Handle to router.
+     *
+     * @return void
+     */
     public function handleToRoute()
     {
         Route::parseRoute();
     }
 
     /**
-     * Undocumented function
+     * Call action.
      *
      * @param string $pars
      * @return void
@@ -215,16 +236,29 @@ class Request
         return $headers;
     }
 
+    /**
+     * Get part of request by passing parameters.
+     *
+     * @param [string | array] $params
+     * @return void
+     */
     public function only($params)
     {
         if (is_array($params)) {
             foreach ($params as $param) {
-                return $this->request[$param] ?: $this->input[$param];
+                return isset($this->request[$params]) ? $this->request[$param] : $this->input[$param];
             }
         }
-        return $this->request[$params] ?: $this->input[$params];
+        // ff($this->input[$params]);
+        return isset($this->request[$params]) ? $this->request[$params] : $this->input[$params];
     }
 
+    /**
+     * Get other request data except this data.
+     *
+     * @param [type] $params
+     * @return void
+     */
     public function except($params)
     {
         $request = array_merge($this->request, $this->input);
@@ -252,11 +286,16 @@ class Request
                     return $this->request[$param] ?: $this->input[$param];
                 }
             }
-            return $this->request[$params] ?: $this->input[$params];
+            return isset($this->request[$params]) ? $this->request[$params] : $this->input[$params];
         } else {
             return array_merge($this->request, $this->input);
         }
 
+    }
+
+    public function cookie()
+    {
+        return Cookie::all();
     }
 
 }
