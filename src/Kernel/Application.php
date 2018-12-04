@@ -124,7 +124,7 @@ class Application extends App implements GSAble
      */
     protected function registerSessionDriver()
     {
-        $driverName = environment()['SESSION_DRIVER'] ?: $this->appConfig['session_driver'];
+        $driverName = isset(environment()['SESSION_DRIVER']) ? environment()['SESSION_DRIVER'] : $this->appConfig['session_driver'];
         if (!$driverName) {
             session_name('HANDSCUBE_ID');
             session_start();

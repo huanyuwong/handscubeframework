@@ -68,6 +68,10 @@ function getKeyFromEnv(string $key)
  */
 function runWithEnvironment()
 {
+    if (!isset(environment()['APP_ENV'])) {
+        exit('.env APP_ENV must be set.');
+    }
+
     if (strtolower(environment()['APP_ENV']) === "production"
         || strtolower(environment()['APP_DEBUG']) === "false") {
         ini_set("display_errors", 0);
@@ -189,8 +193,8 @@ function customErrorHandler($errCode, $errMsg, $errFile, $errLine, $errContext =
     if ($errCode === E_ERROR || $errCode === E_USER_ERROR) {
         throw new ErrorException($errMsg, $errCode, null, $errFile, $errLine);
     }
-    if ($errCode === E_NOTICE || $errCode === E_USER_NOTICE) {
-        echo "<b><p style='font-size:20px'>NOTICE:</p> </b> [$errCode] $errMsg in <b> $errFile : $errLine</b><br />\n";
+    if ($errCode == 8 || $errCode === E_NOTICE || $errCode === E_USER_NOTICE) {
+        echo "<b><p style='font-size:20px;margin:0'>NOTICE:</p> </b> [$errCode] $errMsg in <b> $errFile : $errLine</b><br />\n";
         return;
     }
     if ($errCode === E_WARNING || $errCode === E_USER_WARNING) {
@@ -230,7 +234,9 @@ function customExceptionHandler(\Throwable $e)
     $exception['errLine'] = $errLine;
     $exception['errMsg'] = $errMsg;
     $exception['errCode'] = $errCode;
-
+    if ($e->getCode() === 8) {
+        return 1;
+    }
     require_once __DIR__ . '/Kernel/Exceptions/ExceptionPage.php';
 
     // echo "<h1 style='margin-bottom:0'>(⊙_⊙;)</h1><br>";
@@ -241,9 +247,6 @@ function customExceptionHandler(\Throwable $e)
     // echo "<hr />";
     // echo "<p style='margin-bottom:0;padding:0;line-height:20px;font-size:20px'><b>Stack Trace:</b></p>";
     // echo "<b>" . resetTrace($e->getTraceAsString()) . "</b>";
-    // if ($e->getCode() === 8) {
-    //     return 1;
-    // }
 
 }
 
