@@ -135,6 +135,9 @@ class Cookie extends Assistant implements FastcallAble
      */
     public function save()
     {
+        if (isset($_COOKIE[$this->name])) {
+            return false;
+        }
         return setcookie($this->name, $this->value, $this->expire, $this->path, $this->domain, $this->secure, $this->httpOnly);
     }
 

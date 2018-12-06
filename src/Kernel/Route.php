@@ -321,7 +321,6 @@ class Route extends Routing
         // }
         if ($match = $this->matchRoute($request)) {
             $resource = $this->parseMatchedRoute($match);
-            // ff($resource);
             $request->pathInfo = isset($this->params[1]) ? $this->params[1] : [];
             if ($this->registerControllerGuard($this->module, $this->controller)) {
                 $this->bindCurrentActionGuard($this->action);
@@ -398,12 +397,10 @@ class Route extends Routing
             $trueUri = (strpos($request->uri, '?') !== false)
             ? substr($request->uri, 0, strpos($request->uri, '?'))
             : $request->uri;
-            if ($result = $this->matchOneRoute($trueUri, $path)) {
+            if ($result = $this->matchOneRoute($trueUri, $path, $resource)) {
                 if (is_array($result)) {
                     foreach ($resource as $type => $item) {
-                        if ($type === 'get' || strpos($type, 'get') !== false) {
-                            $resource[$type]['params'] = $result;
-                        }
+                        $resource[$type]['params'] = $result;
                     }
                     return $resource;
                 }
@@ -440,9 +437,10 @@ class Route extends Routing
      *
      * @param [type] $uri
      * @param [type] $routePath
+     * @param [type] $resource
      * @return [bool | array] return an array contains params when matchs success,else return a bool.
      */
-    public function matchOneRoute($uri, $routePath)
+    public function matchOneRoute($uri, $routePath, $resource)
     {
         $matchWithoutKey = [];
         $matchWithKey = [];
@@ -461,6 +459,9 @@ class Route extends Routing
                     }
                     continue;
                 }
+            }
+            if ($this->checkRoutePattern($resource, $matchWithKey) === false) {
+                return false;
             }
         } else {
             return false;
@@ -511,8 +512,7 @@ class Route extends Routing
     public function checkRouteMethod($matches)
     {
         foreach ($matches as $typeIdx => $match) {
-            if ($typeIdx === 'any'
-                || $typeIdx === $this->app->request->requestType) {
+            if ($typeIdx === 'any' || $typeIdx === $this->app->request->requestType) {
                 return [$this->app->request->requestType => $match];
             } elseif (strpos($typeIdx, '|') !== false) {
                 $types = explode("|", $typeIdx);
@@ -521,12 +521,31 @@ class Route extends Routing
                         return [$type => $match];
                     }
                 }
-            } else {
-                throw new AuthException("Access denied cause request type is not allowed to access the route.");
-                return false;
             }
         }
+        throw new AuthException("Access denied cause request type is not allowed to access the route.");
+        return false;
+    }
 
+    public function checkRoutePattern($resource, $params)
+    {
+        $currentType = $this->app->request->requestType;
+        foreach ($resource as $key => $item) {
+            if ($currentType === $key || stristr($key, $currentType) !== false) {
+                if (isset($resource[$key]['pattern'])) {
+                    $patterns = $resource[$key]['pattern'];
+                    foreach ($patterns as $index => $regex) {
+                        if (isset($params[$index])) {
+                            preg_match($regex, $params[$index], $matches);
+                            if (!$matches) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     /**

@@ -23,6 +23,8 @@ class Routing extends Component implements CubeAble
     protected static $routingNameTable = [];
     protected static $latelyRoute = [];
     protected static $currentRegisterRoute;
+    protected static $currentRegisterPath;
+    protected static $currentRegisterType;
     protected static $currentRoute;
     protected static $lastRoute;
 
@@ -83,6 +85,8 @@ class Routing extends Component implements CubeAble
     {
         $path = self::havePrefix($path);
         if ($path && $resource && $type) {
+            self::$currentRegisterPath = $path;
+            self::$currentRegisterType = $type;
             self::$currentRegisterRoute = self::app()->request->protocol . "://" . self::app()->request->host . $path;
             if (isset(self::$routingTable[$path])) {
                 if ($type === 'any') {
@@ -220,6 +224,18 @@ class Routing extends Component implements CubeAble
     }
 
     /**
+     * Regex match.
+     *
+     * @param array $patterns
+     * @return void
+     */
+    public static function regex(array $patterns)
+    {
+        self::$routingTable[self::$currentRegisterPath][self::$currentRegisterType]['pattern'] = $patterns;
+        return self::this();
+    }
+
+    /**
      * Route method.
      *
      * @param string $path
@@ -285,12 +301,12 @@ class Routing extends Component implements CubeAble
     public static function resource(string $pathName, string $controller)
     {
         self::get('/' . $pathName, $controller . '@index')->name($pathName . '.index');
-        self::get('/' . $pathName . '/{id}', $controller . '@show')->name($pathName . '.show');
+        self::get('/' . $pathName . '/{id}', $controller . '@show')->regex(['id' => '/\d+/'])->name($pathName . '.show');
         self::get('/' . $pathName . '/create', $controller . '@create')->name($pathName . '.create');
         self::post('/' . $pathName, $controller . '@store')->name($pathName . '.store');
-        self::get('/' . $pathName . '/{id}/edit', $controller . '@edit')->name($pathName . '.edit');
+        self::get('/' . $pathName . '/{id}/edit', $controller . '@edit')->regex(['id' => '/\d+/'])->name($pathName . '.edit');
         self::match(['put', 'patch'], '/' . $pathName . '/{id}', $controller . '@update')->name($pathName . '.update');
-        self::match(['get', 'delete'], '/' . $pathName . '/{id}', $controller . '@delete')->name($pathName . '.delete');
+        self::delete('/' . $pathName . '/{id}', $controller . '@destroy')->regex(['id' => '/\d+/'])->name($pathName . '.destroy');
     }
 
     /**

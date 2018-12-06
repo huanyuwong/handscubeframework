@@ -31,6 +31,7 @@ class Request
     public $post = []; //$_POST.
     public $input = []; //raw input.
     public $request = []; //$_REQUEST
+    public $files = []; //$_FILES
     public $raw_data; //STD_IN.
 
     public $module;
@@ -67,12 +68,14 @@ class Request
      */
     private function __boot()
     {
+
         $this->header = new RequestHeader($this->getHeaders());
         $this->_server = $_SERVER;
         $this->query = $_GET;
         $this->post = $_POST;
         $this->request = $_REQUEST;
-        $this->raw_data = \file_get_contents("php://input", "r");
+        $this->files = $_FILES;
+        $this->raw_data = $this->checkWhetherEncode(\file_get_contents("php://input", "r"));
         $this->input = $this->parseRawInput($this->raw_data);
         $this->requestTime = time();
         $this->requestType = array_key_exists("_method", $this->post) ? strtolower($this->post["_method"]) : strtolower($_SERVER["REQUEST_METHOD"]);
@@ -130,7 +133,7 @@ class Request
     {
         if ($rawInput) {
             $parsedInput = [];
-            if ($this->inputIsRaw($rawInput)) {
+            if ($this->inputIsStringRaw($rawInput)) {
                 foreach (explode('&', $rawInput) as $rawItem) {
                     $rawItemArr = explode('=', $rawItem);
                     $parsedInput[\urldecode($rawItemArr[0])] = urldecode($rawItemArr[1]);
@@ -163,12 +166,70 @@ class Request
      * @param [type] $input
      * @return void
      */
-    public function inputIsRaw($input)
+    public function inputIsStringRaw($input)
     {
+        if ($this->checkInputRawIsImg($input)) {
+            return false;
+        }
         if (is_string($input)) {
             return strpos($input, '&') === false ? false : true;
         }
         return false;
+    }
+
+    /**
+     * Check whether the input raw data should encode.
+     *
+     * @param [type] $input
+     * @return void
+     */
+    public function checkWhetherEncode($input)
+    {
+        if (stristr($this->getInputRawType($input), 'image') !== false) {
+            return base64_encode($input);
+        }
+        return $input;
+    }
+
+    /**
+     * Get input raw type.
+     *
+     * @param [type] $input
+     * @return void
+     */
+    public function getInputRawType($input)
+    {
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        return $finfo->buffer($input);
+    }
+
+    /**
+     * Check input raw is image or not.
+     *
+     * @param [string] $input
+     * @return void
+     */
+    public function checkInputRawIsImg($input)
+    {
+        if (stristr($this->getInputRawType($input), 'img') !== false) {
+            return ture;
+        }
+        return false;
+    }
+
+    /**
+     * Check binary data is img or not.
+     *
+     * @param [type] $input
+     * @return void
+     */
+    public function checkIsFullBinImg($input)
+    {
+        if (imagecreatefromstring($input)) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     /**
@@ -242,15 +303,12 @@ class Request
      * @param [string | array] $params
      * @return void
      */
-    public function only($params)
+    public function only()
     {
-        if (is_array($params)) {
-            foreach ($params as $param) {
-                return isset($this->request[$params]) ? $this->request[$param] : $this->input[$param];
-            }
+        $params = func_get_args();
+        if ($params) {
+            return $this->input($params);
         }
-        // ff($this->input[$params]);
-        return isset($this->request[$params]) ? $this->request[$params] : $this->input[$params];
     }
 
     /**
@@ -259,17 +317,14 @@ class Request
      * @param [type] $params
      * @return void
      */
-    public function except($params)
+    public function except()
     {
-        $request = array_merge($this->request, $this->input);
-        if (is_array($params)) {
-            foreach ($params as $param) {
-                unset($request[$param]);
-            }
-            return $request;
+        $exceptKeys = func_get_args();
+        if ($exceptKeys) {
+            $requestParams = $this->input();
+            $exceptParams = $this->input($exceptKeys);
+            return array_diff($requestParams, $exceptParams);
         }
-        unset($request[$params]);
-        return $request;
     }
 
     /**
@@ -280,15 +335,39 @@ class Request
      */
     public function input($params = '')
     {
+        $result = [];
         if ($params) {
             if (is_array($params)) {
                 foreach ($params as $param) {
-                    return $this->request[$param] ?: $this->input[$param];
+                    if (isset($this->request[$param]) || isset($this->input[$param]) || isset($this->pathInfo[$param])) {
+                        if (isset($this->request[$param])) {
+                            $result[] = $this->request[$param];
+                        }
+                        if (isset($this->input[$param])) {
+                            $result[] = $this->input[$param];
+                        }
+                        if (isset($this->pathInfo[$param])) {
+                            $result[] = $this->pathInfo[$param];
+                        }
+                    }
+                }
+                return $result;
+            }
+            if (is_string($params)) {
+                if (isset($this->request[$params]) || isset($this->input[$params]) || isset($this->pathInfo[$params])) {
+                    if (isset($this->request[$params])) {
+                        return $this->request[$params];
+                    }
+                    if (isset($this->input[$params])) {
+                        return $this->input[$params];
+                    }
+                    if (isset($this->pathInfo[$params])) {
+                        return $this->pathInfo[$params];
+                    }
                 }
             }
-            return isset($this->request[$params]) ? $this->request[$params] : $this->input[$params];
         } else {
-            return array_merge($this->request, $this->input);
+            return array_merge($this->request, $this->input, $this->pathInfo);
         }
 
     }
