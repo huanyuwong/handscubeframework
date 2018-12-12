@@ -17,7 +17,7 @@ use Handscube\Kernel\Request;
 /***
  * Route Class #Handscube.
  * This Class is part of Handscube framework.
- * @Author J.W.
+ * @author J.W.
  */
 
 class Route extends Routing

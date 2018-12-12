@@ -7,6 +7,10 @@ use Handscube\Kernel\Exceptions\InsideException;
 use Handscube\Kernel\Queue\Task;
 use Handscube\Kernel\Redis;
 
+/**
+ * Class Reactor
+ */
+
 class Reactor
 {
 
@@ -57,13 +61,10 @@ class Reactor
                             echo $redis->rpop('tasks') . "\n";
                         }
                     };
-
                     $thread->start() && $thread->join();
-
                 }
             }
             sleep(3);
-            echo "....\n";
         }
     }
 
